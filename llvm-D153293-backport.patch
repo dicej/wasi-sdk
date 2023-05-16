@@ -1,0 +1,40 @@
+diff --git a/clang/lib/Driver/ToolChains/WebAssembly.cpp b/clang/lib/Driver/ToolChains/WebAssembly.cpp
+index a1c4cd9ef9c7..4cbc0794f420 100644
+--- a/clang/lib/Driver/ToolChains/WebAssembly.cpp
++++ b/clang/lib/Driver/ToolChains/WebAssembly.cpp
+@@ -101,13 +101,16 @@ void wasm::Linker::ConstructJob(Compilation &C, const JobAction &JA,
+           << CM << A->getOption().getName();
+     }
+   }
+-  if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nostartfiles))
++  if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nostartfiles, options::OPT_shared))
+     CmdArgs.push_back(Args.MakeArgString(ToolChain.GetFilePath(Crt1)));
+   if (Entry) {
+     CmdArgs.push_back(Args.MakeArgString("--entry"));
+     CmdArgs.push_back(Args.MakeArgString(Entry));
+   }
+ 
++  if (Args.hasArg(options::OPT_shared))
++    CmdArgs.push_back(Args.MakeArgString("-shared"));
++
+   AddLinkerInputs(ToolChain, Inputs, Args, CmdArgs, JA);
+ 
+   if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nodefaultlibs)) {
+diff --git a/llvm/lib/Target/WebAssembly/WebAssemblyTargetMachine.cpp b/llvm/lib/Target/WebAssembly/WebAssemblyTargetMachine.cpp
+index 630c786a3dc7..788e08e3c8a9 100644
+--- a/llvm/lib/Target/WebAssembly/WebAssemblyTargetMachine.cpp
++++ b/llvm/lib/Target/WebAssembly/WebAssemblyTargetMachine.cpp
+@@ -98,13 +98,6 @@ static Reloc::Model getEffectiveRelocModel(std::optional<Reloc::Model> RM,
+     return Reloc::Static;
+   }
+ 
+-  if (!TT.isOSEmscripten()) {
+-    // Relocation modes other than static are currently implemented in a way
+-    // that only works for Emscripten, so disable them if we aren't targeting
+-    // Emscripten.
+-    return Reloc::Static;
+-  }
+-
+   return *RM;
+ }
+ 
