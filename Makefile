@@ -114,14 +114,19 @@ build/wasi-libc.BUILT: build/compiler-rt.BUILT
 		AR=$(BUILD_PREFIX)/bin/llvm-ar \
 		NM=$(BUILD_PREFIX)/bin/llvm-nm \
 		SYSROOT=$(BUILD_PREFIX)/share/wasi-sysroot \
-		BUILTINS_LIB=$(BUILD_PREFIX)/lib/clang/$(CLANG_VERSION)/lib/wasi/libclang_rt.builtins-wasm32.a \
+		WASI_SNAPSHOT=preview2 \
 		default libc_so
 	$(MAKE) -C $(ROOT_DIR)/src/wasi-libc \
 		CC=$(BUILD_PREFIX)/bin/clang \
 		AR=$(BUILD_PREFIX)/bin/llvm-ar \
 		NM=$(BUILD_PREFIX)/bin/llvm-nm \
 		SYSROOT=$(BUILD_PREFIX)/share/wasi-sysroot \
-		BUILTINS_LIB=$(BUILD_PREFIX)/lib/clang/$(CLANG_VERSION)/lib/wasi/libclang_rt.builtins-wasm32.a \
+		default libc_so
+	$(MAKE) -C $(ROOT_DIR)/src/wasi-libc \
+		CC=$(BUILD_PREFIX)/bin/clang \
+		AR=$(BUILD_PREFIX)/bin/llvm-ar \
+		NM=$(BUILD_PREFIX)/bin/llvm-nm \
+		SYSROOT=$(BUILD_PREFIX)/share/wasi-sysroot \
 		THREAD_MODEL=posix
 	touch build/wasi-libc.BUILT
 
@@ -199,6 +204,16 @@ LIBCXX_CMAKE_FLAGS = \
 
 build/libcxx.BUILT: build/llvm.BUILT build/wasi-libc.BUILT
 	# Do the build.
+	mkdir -p build/libcxx-preview2
+	cd build/libcxx-preview2 && cmake -G Ninja $(call LIBCXX_CMAKE_FLAGS,OFF,ON) \
+		-DCMAKE_SYSROOT=$(BUILD_PREFIX)/share/wasi-sysroot \
+		-DCMAKE_C_FLAGS="$(DEBUG_PREFIX_MAP) $(EXTRA_CFLAGS)" \
+		-DCMAKE_CXX_FLAGS="$(DEBUG_PREFIX_MAP) $(EXTRA_CXXFLAGS)" \
+		-DLIBCXX_LIBDIR_SUFFIX=$(ESCAPE_SLASH)/wasm32-wasi-preview2 \
+		-DLIBCXXABI_LIBDIR_SUFFIX=$(ESCAPE_SLASH)/wasm32-wasi-preview2 \
+		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
+		$(LLVM_PROJ_DIR)/runtimes
+	ninja $(NINJA_FLAGS) -C build/libcxx-preview2
 	mkdir -p build/libcxx
 	cd build/libcxx && cmake -G Ninja $(call LIBCXX_CMAKE_FLAGS,OFF,ON) \
 		-DCMAKE_SYSROOT=$(BUILD_PREFIX)/share/wasi-sysroot \
@@ -221,6 +236,7 @@ build/libcxx.BUILT: build/llvm.BUILT build/wasi-libc.BUILT
 	ninja $(NINJA_FLAGS) -C build/libcxx-threads
 	# Do the install.
 	DESTDIR=$(DESTDIR) ninja $(NINJA_FLAGS) -C build/libcxx install
+	DESTDIR=$(DESTDIR) ninja $(NINJA_FLAGS) -C build/libcxx-preview2 install
 	DESTDIR=$(DESTDIR) ninja $(NINJA_FLAGS) -C build/libcxx-threads install
 	touch build/libcxx.BUILT
 
