@@ -51,10 +51,9 @@ default: build
 	@echo "Use -fdebug-prefix-map=$(ROOT_DIR)=wasisdk://v$(VERSION)"
 
 check:
-	@echo "temporarily skipping tests"
-	# CC="clang --sysroot=$(BUILD_PREFIX)/share/wasi-sysroot" \
-	# CXX="clang++ --sysroot=$(BUILD_PREFIX)/share/wasi-sysroot -fno-exceptions" \
-	# PATH="$(PATH_PREFIX)/bin:$$PATH" tests/run.sh "$(BUILD_PREFIX)" "$(RUNTIME)"
+	CC="clang --sysroot=$(BUILD_PREFIX)/share/wasi-sysroot" \
+	CXX="clang++ --sysroot=$(BUILD_PREFIX)/share/wasi-sysroot -fno-exceptions" \
+	PATH="$(PATH_PREFIX)/bin:$$PATH" tests/run.sh "$(BUILD_PREFIX)" "$(RUNTIME)" "$(ADAPTER)" "$(WASM_TOOLS)"
 
 clean:
 	rm -rf build $(DESTDIR)
@@ -235,9 +234,14 @@ build/libcxx.BUILT: build/llvm.BUILT build/wasi-libc.BUILT
 		$(LLVM_PROJ_DIR)/runtimes
 	ninja $(NINJA_FLAGS) -C build/libcxx-threads
 	# Do the install.
-	DESTDIR=$(DESTDIR) ninja $(NINJA_FLAGS) -C build/libcxx install
 	DESTDIR=$(DESTDIR) ninja $(NINJA_FLAGS) -C build/libcxx-preview2 install
+	mv $(BUILD_PREFIX)/share/wasi-sysroot/include/c++ $(BUILD_PREFIX)/share/wasi-sysroot/include/wasm32-wasi-preview2/
+	DESTDIR=$(DESTDIR) ninja $(NINJA_FLAGS) -C build/libcxx install
+	mv $(BUILD_PREFIX)/share/wasi-sysroot/include/c++ $(BUILD_PREFIX)/share/wasi-sysroot/include/wasm32-wasi/
 	DESTDIR=$(DESTDIR) ninja $(NINJA_FLAGS) -C build/libcxx-threads install
+	mv $(BUILD_PREFIX)/share/wasi-sysroot/include/c++ $(BUILD_PREFIX)/share/wasi-sysroot/include/wasm32-wasi-threads/
+	# As of this writing, `clang++` will ignore the above include dirs unless this one also exists:
+	mkdir -p $(BUILD_PREFIX)/share/wasi-sysroot/include/c++/v1
 	touch build/libcxx.BUILT
 
 build/config.BUILT:
