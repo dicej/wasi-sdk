@@ -40,9 +40,9 @@ jobs:
         if: matrix.os == 'macos-latest'
       - name: Install wasmtime for tests
         run: |
-          curl -f -L --retry 5 https://wasmtime.dev/install.sh | bash -s -- --version v16.0.0
+          curl -f -L --retry 5 https://wasmtime.dev/install.sh | bash -s -- --version v17.0.0
           ~/.wasmtime/bin/wasmtime --version
-          curl -f -L --retry 5  -o ~/.wasmtime/bin/wasi_snapshot_preview1.command.wasm https://github.com/bytecodealliance/wasmtime/releases/download/v16.0.0/wasi_snapshot_preview1.command.wasm
+          curl -f -L --retry 5  -o ~/.wasmtime/bin/wasi_snapshot_preview1.command.wasm https://github.com/bytecodealliance/wasmtime/releases/download/v17.0.0/wasi_snapshot_preview1.command.wasm
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
           curl -f -OL --retry 5 https://github.com/bytecodealliance/wasm-tools/releases/download/wasm-tools-1.0.54/wasm-tools-1.0.54-x86_64-linux.tar.gz
           tar xf wasm-tools-1.0.54-x86_64-linux.tar.gz
