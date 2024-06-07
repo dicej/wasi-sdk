@@ -56,14 +56,29 @@ jobs:
       - name: Install ccache, ninja (macOS)
         run: brew install ccache ninja
         if: matrix.os == 'macos-latest'
-      - name: Install ccache, ninja (Linux)
-        run: sudo apt install ccache ninja-build
+      - name: Install build dependencies (Linux)
+        run: |
+          sudo apt install ccache ninja-build gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          rustup target add aarch64-unknown-linux-gnu
         if: matrix.os == 'ubuntu-latest'
       - name: Build
-        run: NINJA_FLAGS=-v make package LLVM_CMAKE_FLAGS=-DLLVM_CCACHE_BUILD=ON
+        run: NINJA_FLAGS=-v make package LLVM_CMAKE_FLAGS=-DLLVM_CCACHE_BUILD=ON DEB_ARCH=amd64 TAR_MACHINE=linux-amd64
         shell: bash
       - name: Run the testsuite
         run: NINJA_FLAGS=-v make check RUNTIME=wasmtime
+      - name: Cross-compile for ARM64
+        # Hacktastic cross-compilation step: build and install an ARM64 LLVM,
+        # reusing everything else we built using the native toolchain.  Once
+        # GitHub provides ARM64 runners to open source projects (planned for
+        # second half of 2024) we'll be able to build natively and avoid this
+        # mess.
+        run: |
+          rm -r build/llvm build/llvm.BUILT
+          NINJA_FLAGS=-v make strip LLVM_CMAKE_FLAGS="-DLLVM_CCACHE_BUILD=ON -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_CROSSCOMPILING=True -DCMAKE_CXX_FLAGS=-march=armv8-a -DCMAKE_SYSTEM_PROCESSOR=arm64 -DCMAKE_SYSTEM_NAME=Linux -DLLVM_HOST_TRIPLE=aarch64-linux-gnu"
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo install wasm-component-ld@0.5.0 --root "$(pwd)/build/install/opt/wasi-sdk" --target aarch64-unknown-linux-gnu
+          mkdir -p dist
+          ./deb_from_installation.sh "$(pwd)/dist" "$(./version.py)" "$(pwd)/build/install/opt/wasi-sdk" "arm64"
+          ./tar_from_installation.sh "$(pwd)/dist" "$(./version.py)" "$(pwd)/build/install/opt/wasi-sdk" "linux-arm64"
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
