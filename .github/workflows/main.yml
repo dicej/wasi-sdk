@@ -79,6 +79,7 @@ jobs:
           mkdir -p dist
           ./deb_from_installation.sh "$(pwd)/dist" "$(./version.py)" "$(pwd)/build/install/opt/wasi-sdk" "arm64"
           ./tar_from_installation.sh "$(pwd)/dist" "$(./version.py)" "$(pwd)/build/install/opt/wasi-sdk" "linux-arm64"
+        if: matrix.os == 'ubuntu-latest'
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
