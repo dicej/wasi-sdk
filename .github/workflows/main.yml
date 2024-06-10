@@ -10,138 +10,132 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Native Build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-    steps:
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          # Bump the prefix number to evict all previous caches and
-          # enforce a clean build, in the unlikely case that some
-          # weird build error occur and ccache becomes a potential
-          # suspect.
-          key: 0-cache-ubuntu-latest-${{ github.run_id }}
-          restore-keys: |
-            0-cache-ubuntu-latest
-        if: matrix.os == 'ubuntu-latest'
-      - uses: actions/cache@v4
-        with:
-          path: ~/Library/Caches/ccache
-          key: 0-cache-macos-latest-${{ github.run_id }}
-          restore-keys: |
-            0-cache-macos-latest
-        if: matrix.os == 'macos-latest'
-      - name: Setup `wasmtime` for tests
-        uses: bytecodealliance/actions/wasmtime/setup@v1
-        with:
-          version: "18.0.2"
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - run: git fetch --tags --force
-        name: Force-fetch tags to work around actions/checkout#290
-      # We can't use `--depth 1` here sadly because the GNU config
-      # submodule is not pinned to a particular tag/branch. Please
-      # bump depth (or even better, the submodule), in case of "error:
-      # Server does not allow request for unadvertised object" in the
-      # future.
-      - run: git submodule update --init --depth 32 --jobs 3
-      - name: Install ccache, ninja (macOS)
-        run: brew install ccache ninja
-        if: matrix.os == 'macos-latest'
-      - name: Install build dependencies (Linux)
-        run: |
-          sudo apt install ccache ninja-build gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          rustup target add aarch64-unknown-linux-gnu
-        if: matrix.os == 'ubuntu-latest'
-      - name: Build
-        run: NINJA_FLAGS=-v make package LLVM_CMAKE_FLAGS=-DLLVM_CCACHE_BUILD=ON DEB_ARCH=amd64 TAR_MACHINE=linux-amd64
-        shell: bash
-      - name: Run the testsuite
-        run: NINJA_FLAGS=-v make check RUNTIME=wasmtime
-      - name: Cross-compile for ARM64
-        # Hacktastic cross-compilation step: build and install an ARM64 LLVM,
-        # reusing everything else we built using the native toolchain.  Once
-        # GitHub provides ARM64 runners to open source projects (planned for
-        # second half of 2024) we'll be able to build natively and avoid this
-        # mess.
-        run: |
-          rm -r build/llvm build/llvm.BUILT
-          NINJA_FLAGS=-v make strip LLVM_CMAKE_FLAGS="-DLLVM_CCACHE_BUILD=ON -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_CROSSCOMPILING=True -DCMAKE_CXX_FLAGS=-march=armv8-a -DCMAKE_SYSTEM_PROCESSOR=arm64 -DCMAKE_SYSTEM_NAME=Linux -DLLVM_HOST_TRIPLE=aarch64-linux-gnu"
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo install wasm-component-ld@0.5.0 --root "$(pwd)/build/install/opt/wasi-sdk" --target aarch64-unknown-linux-gnu
-          mkdir -p dist
-          ./deb_from_installation.sh "$(pwd)/dist" "$(./version.py)" "$(pwd)/build/install/opt/wasi-sdk" "arm64"
-          ./tar_from_installation.sh "$(pwd)/dist" "$(./version.py)" "$(pwd)/build/install/opt/wasi-sdk" "linux-arm64"
-        if: matrix.os == 'ubuntu-latest'
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          # Upload the dist folder. Give it a name according to the OS it was built for.
-          name: ${{ format( 'dist-{0}', matrix.os) }}
-          path: dist
+  # build:
+  #   name: Native Build
+  #   runs-on: ${{ matrix.os }}
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       os:
+  #         - ubuntu-latest
+  #         - macos-latest
+  #   steps:
+  #     - uses: actions/cache@v4
+  #       with:
+  #         path: ~/.cache/ccache
+  #         # Bump the prefix number to evict all previous caches and
+  #         # enforce a clean build, in the unlikely case that some
+  #         # weird build error occur and ccache becomes a potential
+  #         # suspect.
+  #         key: 0-cache-ubuntu-latest-${{ github.run_id }}
+  #         restore-keys: |
+  #           0-cache-ubuntu-latest
+  #       if: matrix.os == 'ubuntu-latest'
+  #     - uses: actions/cache@v4
+  #       with:
+  #         path: ~/Library/Caches/ccache
+  #         key: 0-cache-macos-latest-${{ github.run_id }}
+  #         restore-keys: |
+  #           0-cache-macos-latest
+  #       if: matrix.os == 'macos-latest'
+  #     - name: Setup `wasmtime` for tests
+  #       uses: bytecodealliance/actions/wasmtime/setup@v1
+  #       with:
+  #         version: "18.0.2"
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #     - run: git fetch --tags --force
+  #       name: Force-fetch tags to work around actions/checkout#290
+  #     # We can't use `--depth 1` here sadly because the GNU config
+  #     # submodule is not pinned to a particular tag/branch. Please
+  #     # bump depth (or even better, the submodule), in case of "error:
+  #     # Server does not allow request for unadvertised object" in the
+  #     # future.
+  #     - run: git submodule update --init --depth 32 --jobs 3
+  #     - name: Install ccache, ninja (macOS)
+  #       run: brew install ccache ninja
+  #       if: matrix.os == 'macos-latest'
+  #     - name: Install build dependencies (Linux)
+  #       run: |
+  #         sudo apt install ccache ninja-build gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+  #         rustup target add aarch64-unknown-linux-gnu
+  #       if: matrix.os == 'ubuntu-latest'
+  #     - name: Build
+  #       run: NINJA_FLAGS=-v make package LLVM_CMAKE_FLAGS=-DLLVM_CCACHE_BUILD=ON DEB_ARCH=amd64 TAR_MACHINE=linux-amd64
+  #       shell: bash
+  #     - name: Run the testsuite
+  #       run: NINJA_FLAGS=-v make check RUNTIME=wasmtime
+  #     - name: Cross-compile for ARM64
+  #       # Hacktastic cross-compilation step: build and install an ARM64 LLVM,
+  #       # reusing everything else we built using the native toolchain.  Once
+  #       # GitHub provides ARM64 runners to open source projects (planned for
+  #       # second half of 2024) we'll be able to build natively and avoid this
+  #       # mess.
+  #       run: ./cross_build_arm64.sh
+  #       if: matrix.os == 'ubuntu-latest'
+  #     - name: Upload artifacts
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         # Upload the dist folder. Give it a name according to the OS it was built for.
+  #         name: ${{ format( 'dist-{0}', matrix.os) }}
+  #         path: dist
 
-  winbuild:
-    name: Windows Build
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            sys: clang64
-            env: clang-x86_64
-          - arch: x86
-            sys: clang32
-            env: clang-i686
-    steps:
-      - uses: actions/cache@v4
-        with:
-          path: ~/AppData/Local/ccache
-          key: 0-${{ format( 'cache-windows-latest-{0}', matrix.arch) }}-${{ github.run_id }}
-          restore-keys: |
-            0-${{ format( 'cache-windows-latest-{0}', matrix.arch) }}
-      - uses: msys2/setup-msys2@v2
-        with:
-          install: >-
-            base-devel
-            git
-            mingw-w64-${{ matrix.env }}-ccache
-            mingw-w64-${{ matrix.env }}-cmake
-            mingw-w64-${{ matrix.env }}-ninja
-            mingw-w64-${{ matrix.env }}-toolchain
-          msystem: ${{ matrix.sys }}
-          update: true
-          release: false
-          path-type: inherit
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - run: git fetch --tags --force
-        name: Force-fetch tags to work around actions/checkout#290
-      - run: git submodule update --init --depth 32 --jobs 3
-      - name: Build
-        shell: msys2 {0}
-        run: |
-          make package LLVM_CMAKE_FLAGS=-DLLVM_CCACHE_BUILD=ON
-          make check
-      - name: Does it work sans msys2?
-        run: |
-          C:\wasi-sdk\bin\clang.exe --version
-          C:\wasi-sdk\bin\llvm-ar.exe --version
-          C:\wasi-sdk\bin\wasm-ld.exe --version
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          # Upload the dist folder. Give it a name according to the OS it was built for.
-          name: ${{ format( 'dist-windows-latest-{0}', matrix.arch) }}
-          path: dist
+  # winbuild:
+  #   name: Windows Build
+  #   runs-on: windows-latest
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       include:
+  #         - arch: x64
+  #           sys: clang64
+  #           env: clang-x86_64
+  #         - arch: x86
+  #           sys: clang32
+  #           env: clang-i686
+  #   steps:
+  #     - uses: actions/cache@v4
+  #       with:
+  #         path: ~/AppData/Local/ccache
+  #         key: 0-${{ format( 'cache-windows-latest-{0}', matrix.arch) }}-${{ github.run_id }}
+  #         restore-keys: |
+  #           0-${{ format( 'cache-windows-latest-{0}', matrix.arch) }}
+  #     - uses: msys2/setup-msys2@v2
+  #       with:
+  #         install: >-
+  #           base-devel
+  #           git
+  #           mingw-w64-${{ matrix.env }}-ccache
+  #           mingw-w64-${{ matrix.env }}-cmake
+  #           mingw-w64-${{ matrix.env }}-ninja
+  #           mingw-w64-${{ matrix.env }}-toolchain
+  #         msystem: ${{ matrix.sys }}
+  #         update: true
+  #         release: false
+  #         path-type: inherit
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #     - run: git fetch --tags --force
+  #       name: Force-fetch tags to work around actions/checkout#290
+  #     - run: git submodule update --init --depth 32 --jobs 3
+  #     - name: Build
+  #       shell: msys2 {0}
+  #       run: |
+  #         make package LLVM_CMAKE_FLAGS=-DLLVM_CCACHE_BUILD=ON
+  #         make check
+  #     - name: Does it work sans msys2?
+  #       run: |
+  #         C:\wasi-sdk\bin\clang.exe --version
+  #         C:\wasi-sdk\bin\llvm-ar.exe --version
+  #         C:\wasi-sdk\bin\wasm-ld.exe --version
+  #     - name: Upload artifacts
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         # Upload the dist folder. Give it a name according to the OS it was built for.
+  #         name: ${{ format( 'dist-windows-latest-{0}', matrix.arch) }}
+  #         path: dist
 
   dockerbuild:
     name: Docker Build
@@ -184,6 +178,19 @@ jobs:
 
       - name: Run docker_build script
         run: ./docker_build.sh
+        
+      - name: Cross-compile for ARM64
+        # Same as `Cross-compile for ARM64` step under `Native Build` above,
+        # except with Docker
+        run: |
+          docker run --rm \
+            --user $(id -u):$(id -g) \
+            -v "$PWD":/workspace:Z \
+            -v ~/.ccache:/home/builder/.ccache:Z \
+            --tmpfs /tmp:exec \
+            wasi-sdk-builder:latest \
+            bash cross_build_arm64.sh
+            
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
