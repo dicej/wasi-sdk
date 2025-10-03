@@ -60,16 +60,16 @@ assert parse_git_version(
 
 
 def git_version():
-    version = exec(['git', 'describe', '--long', '--candidates=999',
-                    '--match=wasi-sdk-*', '--dirty=+m', f'--abbrev={GIT_REF_LEN}'],
-                    os.path.dirname(sys.argv[0]))
-    major, minor, git, dirty = parse_git_version(version)
-    version = f'{major}.{minor}'
-    if git:
-        version += f'g{git}'
-    if dirty:
-        version += '+m'
-    return version
+    # version = exec(['git', 'describe', '--long', '--candidates=999',
+    #                 '--match=wasi-sdk-*', '--dirty=+m', f'--abbrev={GIT_REF_LEN}'],
+    #                 os.path.dirname(sys.argv[0]))
+    # major, minor, git, dirty = parse_git_version(version)
+    # version = f'{major}.{minor}'
+    # if git:
+    #     version += f'g{git}'
+    # if dirty:
+    #     version += '+m'
+    return '27.0'
 
 
 def parse_cmake_set(line):

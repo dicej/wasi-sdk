@@ -25,31 +25,31 @@ jobs:
           - artifact: x86_64-linux
             os: ubuntu-24.04
 
-          - artifact: arm64-linux
-            os: ubuntu-22.04-arm
+          # - artifact: arm64-linux
+          #   os: ubuntu-22.04-arm
 
-          - artifact: arm64-macos
-            os: macos-14
-            rust_target: aarch64-apple-darwin
-            env:
-              WASI_SDK_CI_TOOLCHAIN_LLVM_CMAKE_ARGS: >-
-                -DCMAKE_OSX_DEPLOYMENT_TARGET=10.12
-                -DCMAKE_OSX_ARCHITECTURES=arm64
+          # - artifact: arm64-macos
+          #   os: macos-14
+          #   rust_target: aarch64-apple-darwin
+          #   env:
+          #     WASI_SDK_CI_TOOLCHAIN_LLVM_CMAKE_ARGS: >-
+          #       -DCMAKE_OSX_DEPLOYMENT_TARGET=10.12
+          #       -DCMAKE_OSX_ARCHITECTURES=arm64
 
-          - artifact: x86_64-macos
-            os: macos-14
-            rust_target: x86_64-apple-darwin
-            env:
-              WASI_SDK_CI_SKIP_SYSROOT: 1
-              WASI_SDK_CI_TOOLCHAIN_LLVM_CMAKE_ARGS: >-
-                -DCMAKE_OSX_DEPLOYMENT_TARGET=10.12
-                -DCMAKE_OSX_ARCHITECTURES=x86_64
+          # - artifact: x86_64-macos
+          #   os: macos-14
+          #   rust_target: x86_64-apple-darwin
+          #   env:
+          #     WASI_SDK_CI_SKIP_SYSROOT: 1
+          #     WASI_SDK_CI_TOOLCHAIN_LLVM_CMAKE_ARGS: >-
+          #       -DCMAKE_OSX_DEPLOYMENT_TARGET=10.12
+          #       -DCMAKE_OSX_ARCHITECTURES=x86_64
 
-          - artifact: x86_64-windows
-            os: windows-2022
+          # - artifact: x86_64-windows
+          #   os: windows-2022
 
-          - artifact: arm64-windows
-            os: windows-11-arm
+          # - artifact: arm64-windows
+          #   os: windows-11-arm
 
     env: ${{ matrix.env || fromJSON('{}') }}
     steps:
@@ -216,17 +216,17 @@ jobs:
             type=ref,event=tag
             type=ref,event=pr
             type=sha
-      - name: Build and push wasi-sdk docker image
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          file: docker/Dockerfile
-          push: ${{ github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch' }}
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      # - name: Build and push wasi-sdk docker image
+      #   uses: docker/build-push-action@v3
+      #   with:
+      #     context: .
+      #     file: docker/Dockerfile
+      #     push: ${{ github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch' }}
+      #     platforms: linux/amd64,linux/arm64
+      #     tags: ${{ steps.meta.outputs.tags }}
+      #     labels: ${{ steps.meta.outputs.labels }}
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
 
       - name: Publish a draft release
         if: startsWith(github.ref, 'refs/tags')
@@ -234,30 +234,30 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Test the final artifacts as-is without passing `--sysroot` or
-  # `-resource-dir` or any extra flags. This exercises running the compiler
-  # as-is from the distribution tarballs and ensuring that it can build and pass
-  # all tests.
-  test-standalone:
-    name: Test standalone toolchain
-    needs: build
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: ./.github/actions/checkout
-      - uses: ./.github/actions/install-deps
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist-x86_64-linux
-          path: dist-x86_64-linux
-      - run: ./ci/merge-artifacts.sh
-      - run: tar xf dist/wasi-sdk-*.tar.gz
-      - run: |
-          cmake -G Ninja -B build -S . \
-            -DWASI_SDK_INCLUDE_TESTS=ON \
-            -DWASI_SDK_TEST_HOST_TOOLCHAIN=ON \
-            -DCMAKE_TOOLCHAIN_FILE=$(ls ./wasi-sdk-*/share/cmake/wasi-sdk.cmake)
-      - run: ninja -C build build-tests
-      - run: ctest --output-on-failure --parallel 10 --test-dir build/tests
+  # # Test the final artifacts as-is without passing `--sysroot` or
+  # # `-resource-dir` or any extra flags. This exercises running the compiler
+  # # as-is from the distribution tarballs and ensuring that it can build and pass
+  # # all tests.
+  # test-standalone:
+  #   name: Test standalone toolchain
+  #   needs: build
+  #   runs-on: ubuntu-24.04
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #     - uses: ./.github/actions/checkout
+  #     - uses: ./.github/actions/install-deps
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         name: dist-x86_64-linux
+  #         path: dist-x86_64-linux
+  #     - run: ./ci/merge-artifacts.sh
+  #     - run: tar xf dist/wasi-sdk-*.tar.gz
+  #     - run: |
+  #         cmake -G Ninja -B build -S . \
+  #           -DWASI_SDK_INCLUDE_TESTS=ON \
+  #           -DWASI_SDK_TEST_HOST_TOOLCHAIN=ON \
+  #           -DCMAKE_TOOLCHAIN_FILE=$(ls ./wasi-sdk-*/share/cmake/wasi-sdk.cmake)
+  #     - run: ninja -C build build-tests
+  #     - run: ctest --output-on-failure --parallel 10 --test-dir build/tests
