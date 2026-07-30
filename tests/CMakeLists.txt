@@ -173,9 +173,8 @@ function(add_testcase test)
             POST_BUILD
             COMMAND
               ${wasm_tools} component link
-                $<TARGET_FILE:${target_name}>
                 ${so_files}
-                ${arg_SHARED_LIBS}
+                $<TARGET_FILE:${target_name}>
                 -o $<TARGET_FILE:${target_name}>
           )
           add_dependencies(${target_name} wasm-tools)
