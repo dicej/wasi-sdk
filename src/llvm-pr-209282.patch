@@ -1,0 +1,300 @@
+diff --git a/clang/lib/CodeGen/CGException.cpp b/clang/lib/CodeGen/CGException.cpp
+index 99dfaa80be42..b0fb3b4d85d1 100644
+--- a/clang/lib/CodeGen/CGException.cpp
++++ b/clang/lib/CodeGen/CGException.cpp
+@@ -265,8 +265,14 @@ const EHPersonality &EHPersonality::get(CodeGenFunction &CGF) {
+ 
+ static llvm::FunctionCallee getPersonalityFn(CodeGenModule &CGM,
+                                              const EHPersonality &Personality) {
+-  return CGM.CreateRuntimeFunction(llvm::FunctionType::get(CGM.Int32Ty, true),
+-                                   Personality.PersonalityFn,
++  llvm::FunctionType *FTy;
++
++  if (Personality.isWasmPersonality()) {
++    FTy = llvm::FunctionType::get(CGM.Int32Ty, {CGM.VoidPtrTy}, false);
++  } else {
++    FTy = llvm::FunctionType::get(CGM.Int32Ty, true);
++  }
++  return CGM.CreateRuntimeFunction(FTy, Personality.PersonalityFn,
+                                    llvm::AttributeList(), /*Local=*/true);
+ }
+ 
+diff --git a/libcxxabi/src/cxa_personality.cpp b/libcxxabi/src/cxa_personality.cpp
+index c5050e46c0e8..3fdcd8a0c134 100644
+--- a/libcxxabi/src/cxa_personality.cpp
++++ b/libcxxabi/src/cxa_personality.cpp
+@@ -1011,9 +1011,7 @@ static inline void get_landing_pad(__cxa_catch_temp_type &dest,
+ #endif
+ }
+ 
+-#ifdef __WASM_EXCEPTIONS__
+-_Unwind_Reason_Code __gxx_personality_wasm0
+-#elif defined(__SEH__) && !defined(__USING_SJLJ_EXCEPTIONS__)
++#if (defined(__SEH__) && !defined(__USING_SJLJ_EXCEPTIONS__)) || defined(__WASM_EXCEPTIONS__)
+ static _Unwind_Reason_Code __gxx_personality_imp
+ #else
+ _LIBCXXABI_FUNC_VIS _Unwind_Reason_Code
+@@ -1114,6 +1112,20 @@ __gxx_personality_seh0(PEXCEPTION_RECORD ms_exc, void *this_frame,
+ }
+ #endif
+ 
++#ifdef __WASM_EXCEPTIONS__
++extern "C" _LIBCXXABI_FUNC_VIS _Unwind_Reason_Code __gxx_wasm_personality_v0(void* exception_ptr) {
++  struct _Unwind_Exception* exception_object = (struct _Unwind_Exception*)exception_ptr;
++
++  // Reset the selector.
++  __wasm_lpad_context.selector = 0;
++
++  // Call personality function. Wasm does not have two-phase unwinding, so we
++  // only do the search phase.
++  return __gxx_personality_imp(1, _UA_SEARCH_PHASE, exception_object->exception_class, exception_object,
++                               (struct _Unwind_Context*)&__wasm_lpad_context);
++}
++#endif
++
+ #else
+ 
+ extern "C" _Unwind_Reason_Code __gnu_unwind_frame(_Unwind_Exception*, _Unwind_Context*);
+diff --git a/libunwind/include/unwind.h b/libunwind/include/unwind.h
+index b1775d3a3dec..93a9d92f327d 100644
+--- a/libunwind/include/unwind.h
++++ b/libunwind/include/unwind.h
+@@ -61,6 +61,10 @@ typedef struct _Unwind_Context _Unwind_Context;   // opaque
+ #include <unwind_itanium.h>
+ #endif
+ 
++#if defined(__WASM_EXCEPTIONS__)
++#include <unwind_wasm.h>
++#endif
++
+ typedef _Unwind_Reason_Code (*_Unwind_Stop_Fn)
+     (int version,
+      _Unwind_Action actions,
+diff --git a/libunwind/include/unwind_wasm.h b/libunwind/include/unwind_wasm.h
+new file mode 100644
+index 000000000000..7bf3f30562bd
+--- /dev/null
++++ b/libunwind/include/unwind_wasm.h
+@@ -0,0 +1,27 @@
++//===----------------------------------------------------------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef __WASM_UNWIND_H__
++#define __WASM_UNWIND_H__
++
++#include <threads.h>
++
++struct _Unwind_LandingPadContext {
++  // Input information to personality function
++  uintptr_t lpad_index; // landing pad index
++  uintptr_t lsda;       // LSDA address
++
++  // Output information computed by personality function
++  uintptr_t selector; // selector value
++};
++
++// Communication channel between compiler-generated user code and personality
++// function
++extern thread_local struct _Unwind_LandingPadContext __wasm_lpad_context;
++
++#endif // __WASM_UNWIND_H__
+diff --git a/libunwind/src/Unwind-wasm.c b/libunwind/src/Unwind-wasm.c
+index 2e949d005b8f..963019ea0efc 100644
+--- a/libunwind/src/Unwind-wasm.c
++++ b/libunwind/src/Unwind-wasm.c
+@@ -19,46 +19,8 @@
+ #include "unwind.h"
+ #include <threads.h>
+ 
+-_Unwind_Reason_Code __gxx_personality_wasm0(int version, _Unwind_Action actions,
+-                                            uint64_t exceptionClass,
+-                                            _Unwind_Exception *unwind_exception,
+-                                            _Unwind_Context *context);
+-
+-struct _Unwind_LandingPadContext {
+-  // Input information to personality function
+-  uintptr_t lpad_index; // landing pad index
+-  uintptr_t lsda;       // LSDA address
+-
+-  // Output information computed by personality function
+-  uintptr_t selector; // selector value
+-};
+-
+-// Communication channel between compiler-generated user code and personality
+-// function
+-thread_local struct _Unwind_LandingPadContext __wasm_lpad_context;
+-
+-/// Calls to this function are in landing pads in compiler-generated user code.
+-/// In other EH schemes, stack unwinding is done by libunwind library, which
+-/// calls the personality function for each frame it lands. On the other hand,
+-/// WebAssembly stack unwinding process is performed by a VM, and the
+-/// personality function cannot be called from there. So the compiler inserts a
+-/// call to this function in landing pads in the user code, which in turn calls
+-/// the personality function.
+-_Unwind_Reason_Code _Unwind_CallPersonality(void *exception_ptr) {
+-  struct _Unwind_Exception *exception_object =
+-      (struct _Unwind_Exception *)exception_ptr;
+-  _LIBUNWIND_TRACE_API("_Unwind_CallPersonality(exception_object=%p)",
+-                       (void *)exception_object);
+-
+-  // Reset the selector.
+-  __wasm_lpad_context.selector = 0;
+-
+-  // Call personality function. Wasm does not have two-phase unwinding, so we
+-  // only do the search phase.
+-  return __gxx_personality_wasm0(
+-      1, _UA_SEARCH_PHASE, exception_object->exception_class, exception_object,
+-      (struct _Unwind_Context *)&__wasm_lpad_context);
+-}
++_LIBUNWIND_EXPORT thread_local struct _Unwind_LandingPadContext
++    __wasm_lpad_context;
+ 
+ /// Called by __cxa_throw.
+ _LIBUNWIND_EXPORT _Unwind_Reason_Code
+diff --git a/llvm/include/llvm/IR/RuntimeLibcalls.td b/llvm/include/llvm/IR/RuntimeLibcalls.td
+index d5f38b9674cd..68fe561bb606 100644
+--- a/llvm/include/llvm/IR/RuntimeLibcalls.td
++++ b/llvm/include/llvm/IR/RuntimeLibcalls.td
+@@ -1681,9 +1681,6 @@ defset list<RuntimeLibcallImpl> SjLjExceptionHandlingLibcalls = {
+   def _Unwind_SjLj_Unregister : RuntimeLibcallImpl<UNWIND_UNREGISTER>;
+ }
+ 
+-// Only used on wasm?
+-def _Unwind_CallPersonality : RuntimeLibcallImpl<UNWIND_CALL_PERSONALITY>;
+-
+ // Used on OpenBSD
+ def __stack_smash_handler : RuntimeLibcallImpl<STACK_SMASH_HANDLER>;
+ 
+@@ -3399,7 +3396,6 @@ def WasmSystemLibrary
+       (add DefaultRuntimeLibcallImpls, Int128RTLibcalls,
+            CompilerRTOnlyInt64Libcalls, CompilerRTOnlyInt128Libcalls,
+            exp10f, exp10,
+-           _Unwind_CallPersonality,
+            emscripten_return_address,
+            LibcallImpls<(add __small_printf,
+                              __small_sprintf,
+diff --git a/llvm/lib/CodeGen/WasmEHPrepare.cpp b/llvm/lib/CodeGen/WasmEHPrepare.cpp
+index b83bcf67716f..e4da22274e69 100644
+--- a/llvm/lib/CodeGen/WasmEHPrepare.cpp
++++ b/llvm/lib/CodeGen/WasmEHPrepare.cpp
+@@ -28,7 +28,7 @@
+ //   wasm.landingpad.index(index);
+ //   __wasm_lpad_context.lpad_index = index;
+ //   __wasm_lpad_context.lsda = wasm.lsda();
+-//   _Unwind_CallPersonality(exn);
++//   personality_fn(exn);
+ //   selector = __wasm_lpad_context.selector;
+ //   ...
+ //
+@@ -39,9 +39,9 @@
+ // transfered to WebAssembly 'catch' instruction.
+ //
+ // Unwinding the stack is not done by libunwind but the VM, so the personality
+-// function in libcxxabi cannot be called from libunwind during the unwinding
+-// process. So after a catch instruction, we insert a call to a wrapper function
+-// in libunwind that in turn calls the real personality function.
++// function (e.g. in libcxxabi) cannot be called from libunwind during the
++// unwinding process. So after a catch instruction, we insert a direct call to
++// the personality instead.
+ //
+ // In Itanium EH, if the personality function decides there is no matching catch
+ // clause in a call frame and no cleanup action to perform, the unwinder doesn't
+@@ -49,7 +49,7 @@
+ // every call frame with a catch intruction, after which the personality
+ // function is called from the compiler-generated user code here.
+ //
+-// In libunwind, we have this struct that serves as a communincation channel
++// In libunwind, we have this struct that serves as a communication channel
+ // between the compiler-generated user code and the personality function in
+ // libcxxabi.
+ //
+@@ -60,20 +60,8 @@
+ // };
+ // struct _Unwind_LandingPadContext __wasm_lpad_context = ...;
+ //
+-// And this wrapper in libunwind calls the personality function.
+-//
+-// _Unwind_Reason_Code _Unwind_CallPersonality(void *exception_ptr) {
+-//   struct _Unwind_Exception *exception_obj =
+-//       (struct _Unwind_Exception *)exception_ptr;
+-//   _Unwind_Reason_Code ret = __gxx_personality_v0(
+-//       1, _UA_CLEANUP_PHASE, exception_obj->exception_class, exception_obj,
+-//       (struct _Unwind_Context *)__wasm_lpad_context);
+-//   return ret;
+-// }
+-//
+ // We pass a landing pad index, and the address of LSDA for the current function
+-// to the wrapper function _Unwind_CallPersonality in libunwind, and we retrieve
+-// the selector after it returns.
++// to the personality function, and we retrieve the selector after it returns.
+ //
+ //===----------------------------------------------------------------------===//
+ 
+@@ -111,8 +99,7 @@ class WasmEHPrepareImpl {
+   Function *GetExnF = nullptr;      // wasm.get.exception() intrinsic
+   Function *CatchF = nullptr;       // wasm.catch() intrinsic
+   Function *GetSelectorF = nullptr; // wasm.get.ehselector() intrinsic
+-  FunctionCallee CallPersonalityF =
+-      nullptr; // _Unwind_CallPersonality() wrapper
++  FunctionCallee PersonalityF = nullptr;
+ 
+   bool prepareThrows(Function &F);
+   bool prepareEHPads(Function &F);
+@@ -235,11 +222,14 @@ bool WasmEHPrepareImpl::prepareEHPads(Function &F) {
+   if (CatchPads.empty() && CleanupPads.empty())
+     return false;
+ 
+-  if (!F.hasPersonalityFn() ||
+-      !isScopedEHPersonality(classifyEHPersonality(F.getPersonalityFn()))) {
++  if (!F.hasPersonalityFn())
++    return false;
++
++  auto Personality = classifyEHPersonality(F.getPersonalityFn());
++
++  if (!isScopedEHPersonality(Personality)) {
+     report_fatal_error("Function '" + F.getName() +
+-                       "' does not have a correct Wasm personality function "
+-                       "'__gxx_wasm_personality_v0'");
++                       "' does not have a supported Wasm personality function");
+   }
+   assert(F.hasPersonalityFn() && "Personality function not found");
+ 
+@@ -274,15 +264,12 @@ bool WasmEHPrepareImpl::prepareEHPads(Function &F) {
+   // instruction selection.
+   CatchF = Intrinsic::getOrInsertDeclaration(&M, Intrinsic::wasm_catch);
+ 
+-  // FIXME: Verify this is really supported for current module.
+-  StringRef UnwindCallPersonalityName =
+-      RTLIB::RuntimeLibcallsInfo::getLibcallImplName(
+-          RTLIB::impl__Unwind_CallPersonality);
++  auto *PersPrototype =
++      FunctionType::get(IRB.getInt32Ty(), {IRB.getPtrTy()}, false);
++  PersonalityF =
++      M.getOrInsertFunction(getEHPersonalityName(Personality), PersPrototype);
+ 
+-  // _Unwind_CallPersonality() wrapper function, which calls the personality
+-  CallPersonalityF = M.getOrInsertFunction(UnwindCallPersonalityName,
+-                                           IRB.getInt32Ty(), IRB.getPtrTy());
+-  if (Function *F = dyn_cast<Function>(CallPersonalityF.getCallee()))
++  if (Function *F = dyn_cast<Function>(PersonalityF.getCallee()))
+     F->setDoesNotThrow();
+ 
+   unsigned Index = 0;
+@@ -367,9 +354,9 @@ void WasmEHPrepareImpl::prepareEHPad(BasicBlock *BB, bool NeedPersonality,
+   // Pseudocode: __wasm_lpad_context.lsda = wasm.lsda();
+   IRB.CreateStore(IRB.CreateCall(LSDAF), LSDAField);
+ 
+-  // Pseudocode: _Unwind_CallPersonality(exn);
+-  CallInst *PersCI = IRB.CreateCall(CallPersonalityF, CatchCI,
+-                                    OperandBundleDef("funclet", CPI));
++  // Pseudocode: personality_fn(exn);
++  CallInst *PersCI =
++      IRB.CreateCall(PersonalityF, CatchCI, OperandBundleDef("funclet", CPI));
+   PersCI->setDoesNotThrow();
+ 
+   // Pseudocode: int selector = __wasm_lpad_context.selector;

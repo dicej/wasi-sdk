@@ -261,6 +261,9 @@ ExternalProject_Add(llvm-build
   COMMAND
     ${CMAKE_COMMAND} -E chdir .. bash -c
       "git apply ${CMAKE_SOURCE_DIR}/src/llvm-prs-208263-208332-208597.patch || git apply ${CMAKE_SOURCE_DIR}/src/llvm-prs-208263-208332-208597.patch -R --check"
+  COMMAND
+    ${CMAKE_COMMAND} -E chdir .. bash -c
+      "git apply ${CMAKE_SOURCE_DIR}/src/llvm-pr-209282.patch || git apply ${CMAKE_SOURCE_DIR}/src/llvm-pr-209282.patch -R --check"
 )
 
 add_custom_target(build ALL DEPENDS llvm-build)
