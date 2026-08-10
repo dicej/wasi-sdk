@@ -66,6 +66,11 @@ function(add_testcase test)
   foreach(target IN LISTS WASI_SDK_TARGETS)
     if(target MATCHES p1)
       set(link_styles static)
+    elseif(test MATCHES "cc$" AND NOT (WASI_SDK_EXCEPTIONS STREQUAL "OFF"))
+      # FIXME(WebAssembly/tool-conventions#270): exceptions require
+      # cross-thread TLS to work right now, but that's known to not work,
+      # so skip this test.
+      set(link_styles static)
     else()
       set(link_styles static shared)
     endif()
@@ -130,13 +135,6 @@ function(add_testcase test)
 
             target_compile_options(${target_name} PRIVATE -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false)
             target_link_options(${target_name} PRIVATE -fwasm-exceptions -lunwind)
-
-            # FIXME(WebAssembly/tool-conventions#270): exceptions require
-            # cross-thread TLS to work right now, but that's known to not work,
-            # so skip this test.
-            if(link_style MATCHES shared)
-              continue()
-            endif()
           else()
             target_compile_options(${target_name} PRIVATE -fno-exceptions)
           endif()
