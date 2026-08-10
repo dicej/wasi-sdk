@@ -130,6 +130,13 @@ function(add_testcase test)
 
             target_compile_options(${target_name} PRIVATE -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false)
             target_link_options(${target_name} PRIVATE -fwasm-exceptions -lunwind)
+
+            # FIXME(WebAssembly/tool-conventions#270): exceptions require
+            # cross-thread TLS to work right now, but that's known to not work,
+            # so skip this test.
+            if(link_style MATCHES shared)
+              continue()
+            endif()
           else()
             target_compile_options(${target_name} PRIVATE -fno-exceptions)
           endif()
