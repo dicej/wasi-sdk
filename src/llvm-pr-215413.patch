@@ -1,0 +1,14 @@
+diff --git a/lld/wasm/Driver.cpp b/lld/wasm/Driver.cpp
+index 740e8878c6e03..da5a5d6092c1e 100644
+--- a/lld/wasm/Driver.cpp
++++ b/lld/wasm/Driver.cpp
+@@ -1004,6 +1004,9 @@ static void createSyntheticSymbols() {
+       ctx.sym.getTLSBase =
+           createUndefinedFunction("__wasm_get_tls_base", &getTLSBaseSignature);
+       ctx.sym.getTLSBase->markLive();
++      ctx.arg.exportedSymbols.insert(ctx.sym.tlsSize->getName());
++      ctx.arg.exportedSymbols.insert(ctx.sym.tlsAlign->getName());
++      ctx.arg.exportedSymbols.insert(ctx.sym.initTLS->getName());
+     }
+   }
+ }
