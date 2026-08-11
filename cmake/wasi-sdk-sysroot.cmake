@@ -291,6 +291,10 @@ function(define_libcxx_sub sysroot target target_suffix extra_target_flags extra
   set(exnsuffix "")
 
   if (exceptions)
+    # Building with `-fPIC` requires fixes in LLVM 23-and-later.
+    if(CMAKE_C_COMPILER_VERSION VERSION_LESS 23.0.0)
+      set(pic OFF)
+    endif()
     set(runtimes "libunwind;${runtimes}")
     list(APPEND extra_flags -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false)
     if (WASI_SDK_EXCEPTIONS STREQUAL "DUAL")
