@@ -179,8 +179,10 @@ jobs:
       matrix:
         include:
           - name: default
-          - name: exceptions
-            defines: -DWASI_SDK_EXCEPTIONS=ON
+          # TODO: re-enable this once LLVM 24 is released as wasi-sdk now relies
+          # on patches that only LLVM 24 has.
+          # - name: exceptions
+          #   defines: -DWASI_SDK_EXCEPTIONS=ON
           - name: static
             defines: -DWASI_SDK_BUILD_SHARED=OFF
     steps:
