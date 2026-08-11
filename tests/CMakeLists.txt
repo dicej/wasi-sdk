@@ -71,6 +71,10 @@ function(add_testcase test)
       # cross-thread TLS to work right now, but that's known to not work,
       # so skip this test.
       set(link_styles static)
+    elseif(CMAKE_C_COMPILER_VERSION VERSION_LESS 23.0.0)
+      # LLVM 22-and-prior has issues with shared linking, so skip those tests
+      # when using a system compiler.
+      set(link_styles static)
     else()
       set(link_styles static shared)
     endif()
